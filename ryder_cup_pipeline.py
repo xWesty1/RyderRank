@@ -115,9 +115,6 @@ def compute_match_play_index(df):
     df["z_par3_good"] = -df["z_par3"]
     df["z_par5_good"] = -df["z_par5"]
     
-    # Compute MPI
-    # Weights:
-    # Drive: 0.20, Birdie: 0.25, Bogey: 0.15, Scramble: 0.15, Putt: 0.15, Par3: 0.05, Par5: 0.05
     df["match_play_index"] = (
         0.20 * df["z_drive"] +
         0.25 * df["z_birdie"] +
@@ -154,9 +151,6 @@ def fit_readiness_model(df, feature_cols, target_col):
     return model
 
 def compute_predicted_readiness(df, model, feature_cols, out_col="pred_readiness"):
-    # We need to handle missing values for prediction. 
-    # For simplicity, we drop rows with missing features for the candidate pool
-    # or fill with mean. Let's drop for safety.
     valid_df = df.dropna(subset=feature_cols).copy()
     if valid_df.empty:
         df[out_col] = np.nan
@@ -281,19 +275,11 @@ def compute_mpi_correlations(players_df, team_us_actual, team_europe_actual):
 
 def recompute_mpi_with_weights(df, weights_dict, out_col):
     """Recomputes MPI with custom weights."""
-    # Ensure z-scores exist (they should if compute_match_play_index was run)
-    # We use the same z-score names as in compute_match_play_index
-    
-    # Weights mapping to z-cols
-    # We assume weights_dict keys match the z_names used before:
-    # z_drive, z_birdie, z_bogey, z_scramble, z_putt, z_par3_good, z_par5_good
     
     # Check if z-cols exist
     required_z = ["z_drive", "z_birdie", "z_bogey", "z_scramble", "z_putt", "z_par3_good", "z_par5_good"]
     for col in required_z:
         if col not in df.columns:
-            # If z-scores aren't there, we can't recompute easily without re-running normalization.
-            # But compute_match_play_index adds them to df. So they should be there.
             return df
             
     df[out_col] = (
@@ -336,11 +322,6 @@ def run_sensitivity_analysis(players_df, us_teams_dict, europe_team_df):
         col_name = f"mpi_{w_name}"
         # Recompute for ALL players
         players_df = recompute_mpi_with_weights(players_df, weights, col_name)
-        
-        # Re-evaluate teams
-        # We need to map the team DFs to the new MPI values.
-        # Since the team DFs are subsets/copies, we should re-merge or just use the player names to look up in the main df.
-        # Safer: Look up in main df.
         
         # Europe Avg
         europe_names = europe_team_df["player_name"]
@@ -419,7 +400,7 @@ def generate_mpi_validation_summary(top_mpi_df, bottom_mpi_df, corr_results, sen
 def plot_mpi_analysis(players_df, sensitivity_df, team_us_actual, team_europe_actual):
     """Generates additional plots for MPI analysis."""
     
-    # 1. Scatter Plot: MPI vs SG Total
+    # Scatter Plot: MPI vs SG Total
     plt.figure(figsize=(8, 6))
     plt.scatter(players_df[SG_TOTAL_COL], players_df[TARGET_COL], alpha=0.5, label="All Players")
     
@@ -436,7 +417,7 @@ def plot_mpi_analysis(players_df, sensitivity_df, team_us_actual, team_europe_ac
     plt.savefig("mpi_vs_sg_scatter.png")
     print("Saved mpi_vs_sg_scatter.png")
     
-    # 2. Distribution Plot
+    # Distribution Plot
     plt.figure(figsize=(8, 6))
     ryder_df = players_df[players_df["player_name"].isin(ryder_names)]
     non_ryder_df = players_df[~players_df["player_name"].isin(ryder_names)]
@@ -451,7 +432,7 @@ def plot_mpi_analysis(players_df, sensitivity_df, team_us_actual, team_europe_ac
     plt.savefig("mpi_distribution.png")
     print("Saved mpi_distribution.png")
     
-    # 3. Sensitivity Plot
+    # Sensitivity Plot
     plt.figure(figsize=(10, 6))
     
     # Pivot for plotting: index=weights_name, columns=team_name, values=win_prob
@@ -476,7 +457,7 @@ def plot_mpi_analysis(players_df, sensitivity_df, team_us_actual, team_europe_ac
 def main():
     print("--- Starting Ryder Cup Analysis ---")
     
-    # 1. Load Metrics
+    # Load Metrics
     dfs = []
     for filename, metric_col in METRIC_SPECS:
         try:
@@ -501,34 +482,9 @@ def main():
     print(f"Computed Match Play Index for {len(players_df)} players.")
 
     
-    # 2. Load Teams
+    # Load Teams
     usa_actual_names = load_team_file(TEAM_FILES["USA"])
     europe_actual_names = load_team_file(TEAM_FILES["Europe"])
-    
-    # Define Pools
-    # USA Pool: Intersection of players_df and usa_actual_names? 
-    # Wait, prompt says: "Build a set of U.S. player names from 2023_usa.csv. When constructing the SG-top-12 baseline, restrict to rows in players_df whose player_name is in that U.S. set."
-    # This implies the pool is ONLY the players listed in 2023_usa.csv. 
-    # BUT 2023_usa.csv usually only contains the 12 selected players?
-    # Let's re-read: "Assume... 2023_usa.csv... listing the actual 2023 team members".
-    # "Baseline U.S. team = top 12 U.S. players... We will define U.S. candidates as those whose player_name appears in players_df AND in 2023_usa.csv, PLUS any additional players that have some kind of U.S. flag..."
-    # "To keep this simple and robust... Build a set of U.S. player names from 2023_usa.csv."
-    # If 2023_usa.csv ONLY has 12 names, then the "Top 12" baseline is just the actual team, which defeats the purpose.
-    # HOWEVER, usually these files might contain a larger list or the user implies we should use that file as the source of "USA Nationality".
-    # Let's look at the file content again.
-    # The user provided `head` showed: Sam Burns, Patrick Cantlay, Wyndham Clark, Rickie Fowler.
-    # It seems it IS just the team.
-    # Wait, if the file only has the 12 team members, then "Top 12" and "Actual" are identical.
-    # Let's check if there is a `player_nationalities.csv` in the directory list.
-    # Yes, `player_nationalities.csv` exists in `data/`.
-    # The prompt said: "plus any additional players that have some kind of U.S. flag or nationality if such a column exists."
-    # "To keep this simple and robust, do the following: Build a set of U.S. player names from 2023_usa.csv."
-    # This instruction seems contradictory if 2023_usa.csv is small.
-    # BUT, I must follow the prompt: "Build a set of U.S. player names from 2023_usa.csv. When constructing the SG-top-12 baseline, restrict to rows in players_df whose player_name is in that U.S. set."
-    # If I do strictly that, the pool is size 12.
-    # Let me check `player_nationalities.csv` just in case I can use it to expand the pool.
-    # The prompt says "plus any additional players that have some kind of U.S. flag... if such a column exists".
-    # I will try to load `player_nationalities.csv` and add USA players from there to the pool.
     
     usa_pool_names = set(usa_actual_names)
     
@@ -561,20 +517,15 @@ def main():
     print(f"USA Pool Size: {len(players_usa_df)}")
     print(f"Europe Pool Size: {len(players_europe_df)}")
 
-    # 3. Build Teams
-    
-    # 3.1 Actual Teams
+    # Build Teams
+    # Actual Teams
     us_actual_df = build_actual_us_team(players_usa_df, usa_actual_names)
     europe_actual_df = build_europe_team(players_europe_df, europe_actual_names)
     
-    # 3.2 Baseline (Top 12 SG)
+    # Baseline (Top 12 SG)
     us_sg_top12_df = build_sg_top12_us_team(players_usa_df)
     
-    # 3.3 Model Team
-    # Features
-    # Features: All numeric metrics EXCEPT match_play_index and player_name
-    # We explicitly include SG_TOTAL_COL as a feature now, if desired.
-    # The prompt suggested: ["sg_total_2023", "sg_putting_2023", ...]
+    # Model Team
     feature_cols = [c for c in players_df.columns if c not in ["player_name", TARGET_COL]]
     
     # Fit model on USA pool to predict MPI
@@ -583,11 +534,21 @@ def main():
     # Predict on USA pool
     players_usa_pred = compute_predicted_readiness(players_usa_df, model, feature_cols)
     
+    # DEBUG: Inspect Scottie Scheffler
+    scottie = players_usa_pred[players_usa_pred["player_name"].str.contains("Scheffler", case=False)]
+    if not scottie.empty:
+        print("\n--- DEBUG: Scottie Scheffler Stats ---")
+        print(scottie[["player_name", TARGET_COL, "pred_readiness"]].to_string(index=False))
+        print("Z-Scores:")
+        z_cols = [c for c in scottie.columns if c.startswith("z_")]
+        print(scottie[z_cols].to_string(index=False))
+        print("--------------------------------------\n")
+
+    
     # Select
     us_model_df = select_model_team(players_usa_pred, team_size=TEAM_SIZE)
     
-    # 4. Evaluation
-    
+    # Evaluation
     # Add strength
     us_actual_df = add_strength_column(us_actual_df)
     europe_actual_df = add_strength_column(europe_actual_df)
@@ -637,7 +598,6 @@ def main():
     }])
     win_prob_df = pd.concat([europe_row, win_prob_df], ignore_index=True)
     
-    # Print Results
     print("\n--- Team Summaries ---")
     print(summary_df.to_string(index=False))
     
