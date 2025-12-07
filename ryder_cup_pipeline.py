@@ -8,24 +8,44 @@ import functools
 from scipy.stats import spearmanr
 
 # --- Constants ---
-DATA_DIR_METRICS = "data/2022-2023"
+def get_metric_specs(year):
+    """Returns metric specs for the given year."""
+    # Base specs
+    specs = [
+        ("SG_total.csv", "sg_total_2023"),
+        ("SG_putting.csv", "sg_putting_2023"),
+        ("scrambling.csv", "scrambling_2023"),
+        ("par5score.csv", "par5_score_2023"),
+        ("par3score.csv", "par3_score_2023"),
+        ("birdieorbetter.csv", "birdie_or_better_2023"),
+        ("bogeyavoidance.csv", "bogey_avoidance_2023"),
+    ]
+    
+    # Handle year-specific filenames
+    if year == 2025:
+        specs.append(("driving_distance.csv", "driving_distance_2023"))
+    else:
+        specs.append(("drivingdistance.csv", "driving_distance_2023"))
+        
+    return specs
+
+def get_data_dir(year):
+    if year == 2025:
+        return "data/2025"
+    return "data/2022-2023"
+
+def get_team_files(year):
+    if year == 2025:
+        return {
+            "USA": "2025_usa.csv",
+            "Europe": "2025_europe.csv"
+        }
+    return {
+        "USA": "2023_usa.csv",
+        "Europe": "2023_europe.csv"
+    }
+
 DATA_DIR_TEAMS = "data"
-
-METRIC_SPECS = [
-    ("SG_total.csv", "sg_total_2023"),
-    ("SG_putting.csv", "sg_putting_2023"),
-    ("scrambling.csv", "scrambling_2023"),
-    ("par5score.csv", "par5_score_2023"),
-    ("par3score.csv", "par3_score_2023"),
-    ("drivingdistance.csv", "driving_distance_2023"),
-    ("birdieorbetter.csv", "birdie_or_better_2023"),
-    ("bogeyavoidance.csv", "bogey_avoidance_2023"),
-]
-
-TEAM_FILES = {
-    "USA": "2023_usa.csv",
-    "Europe": "2023_europe.csv"
-}
 
 SG_TOTAL_COL = "sg_total_2023"
 TARGET_COL = "match_play_index"
@@ -42,8 +62,8 @@ def normalize_player_name(df):
             return df.rename(columns={col: "player_name"})
     raise ValueError(f"Could not find player name column in {df.columns}")
 
-def load_metric_file(filename, metric_col_name):
-    path = os.path.join(DATA_DIR_METRICS, filename)
+def load_metric_file(data_dir, filename, metric_col_name):
+    path = os.path.join(data_dir, filename)
     if not os.path.exists(path):
         raise FileNotFoundError(f"File not found: {path}")
     
@@ -454,14 +474,20 @@ def plot_mpi_analysis(players_df, sensitivity_df, team_us_actual, team_europe_ac
 
 # --- Main ---
 
-def main():
-    print("--- Starting Ryder Cup Analysis ---")
+def run_analysis_for_year(year):
+    print(f"\n{'='*40}")
+    print(f"--- Starting Ryder Cup Analysis for {year} ---")
+    print(f"{'='*40}\n")
     
-    # Load Metrics
+    data_dir = get_data_dir(year)
+    metric_specs = get_metric_specs(year)
+    team_files = get_team_files(year)
+    
+    # 1. Load Metrics
     dfs = []
-    for filename, metric_col in METRIC_SPECS:
+    for filename, metric_col in metric_specs:
         try:
-            d = load_metric_file(filename, metric_col)
+            d = load_metric_file(data_dir, filename, metric_col)
             dfs.append(d)
         except Exception as e:
             print(f"Error loading {filename}: {e}")
@@ -483,8 +509,8 @@ def main():
 
     
     # Load Teams
-    usa_actual_names = load_team_file(TEAM_FILES["USA"])
-    europe_actual_names = load_team_file(TEAM_FILES["Europe"])
+    usa_actual_names = load_team_file(team_files["USA"])
+    europe_actual_names = load_team_file(team_files["Europe"])
     
     usa_pool_names = set(usa_actual_names)
     
@@ -565,7 +591,7 @@ def main():
     
     # US Teams
     us_teams = [
-        ("US_actual_2023", us_actual_df),
+        (f"US_actual_{year}", us_actual_df),
         ("US_SG_top12", us_sg_top12_df),
         ("US_model_team", us_model_df)
     ]
@@ -617,7 +643,7 @@ def main():
     
     plt.axhline(y=0.5, color='r', linestyle='--', label="Even Match (50%)")
     plt.ylabel("Implied Win Probability")
-    plt.title(f"US Teams Win Probability vs Europe (MPI-based, Beta={BETA_LOGISTIC})")
+    plt.title(f"US Teams Win Probability vs Europe ({year}, MPI-based, Beta={BETA_LOGISTIC})")
     plt.ylim(0, 1.0)
     
     # Add labels
@@ -629,12 +655,12 @@ def main():
                  
     plt.legend()
     plt.tight_layout()
-    plt.savefig("ryder_cup_analysis.png")
-    print("\nChart saved to ryder_cup_analysis.png")
+    plt.savefig(f"ryder_cup_analysis_{year}.png")
+    print(f"\nChart saved to ryder_cup_analysis_{year}.png")
     
     # --- 5. Validation Output ---
     print("\n" + "="*40)
-    print("==== MPI VALIDATION SUMMARY FOR REPORT ====")
+    print(f"==== MPI VALIDATION SUMMARY FOR REPORT ({year}) ====")
     print("="*40 + "\n")
     
     # 1. Ranking Tables
@@ -656,14 +682,23 @@ def main():
     print("\n--- Sensitivity Analysis ---")
     print(sensitivity_df.to_string(index=False))
     
-    # 4. Plots
-    plot_mpi_analysis(players_df, sensitivity_df, us_actual_df, europe_actual_df)
+    # 4. Plots (Optional for 2025, but good to have)
+    # plot_mpi_analysis(players_df, sensitivity_df, us_actual_df, europe_actual_df) 
+    # Note: plot_mpi_analysis saves to fixed filenames, so it would overwrite. 
+    # We should probably update it to take a suffix or just skip for now to avoid clutter.
     
     # 5. Draft Text
     report_text = generate_mpi_validation_summary(top_mpi, bottom_mpi, corr_results, sensitivity_df)
     print("\n--- DRAFT REPORT TEXT ---")
     print(report_text)
     print("\n" + "="*40)
+
+def main():
+    # Run for 2023 (Original)
+    run_analysis_for_year(2023)
+    
+    # Run for 2025 (New)
+    run_analysis_for_year(2025)
 
 if __name__ == "__main__":
     main()
