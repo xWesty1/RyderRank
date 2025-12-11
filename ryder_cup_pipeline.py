@@ -14,11 +14,14 @@ def get_metric_specs(year):
     specs = [
         ("SG_total.csv", "sg_total_2023"),
         ("SG_putting.csv", "sg_putting_2023"),
+        ("SG_offtee.csv", "sg_offtee_2023"),
         ("scrambling.csv", "scrambling_2023"),
         ("par5score.csv", "par5_score_2023"),
         ("par3score.csv", "par3_score_2023"),
         ("birdieorbetter.csv", "birdie_or_better_2023"),
         ("bogeyavoidance.csv", "bogey_avoidance_2023"),
+        ("birdieavg.csv", "birdie_average_2023")
+
     ]
     
     # Handle year-specific filenames
@@ -50,7 +53,7 @@ DATA_DIR_TEAMS = "data"
 SG_TOTAL_COL = "sg_total_2023"
 TARGET_COL = "match_play_index"
 TEAM_SIZE = 12
-BETA_LOGISTIC = 15.0  # Tunable parameter
+BETA_LOGISTIC = 2.5  # Tunable parameter
 
 # --- 1. Data Loading and Normalization ---
 
@@ -113,7 +116,10 @@ def compute_match_play_index(df):
         "scrambling_2023": "z_scramble",
         "sg_putting_2023": "z_putt",
         "par3_score_2023": "z_par3",
-        "par5_score_2023": "z_par5"
+        "par5_score_2023": "z_par5",
+        "sg_offtee_2023": "z_offtee",
+        "birdie_average_2023": "z_birdie_avg"
+
     }
     
     # Check columns
@@ -136,13 +142,14 @@ def compute_match_play_index(df):
     df["z_par5_good"] = -df["z_par5"]
     
     df["match_play_index"] = (
-        0.20 * df["z_drive"] +
-        0.25 * df["z_birdie"] +
+        0.05 * df["z_drive"] +
         0.15 * df["z_bogey"] +
-        0.15 * df["z_scramble"] +
+        0.10 * df["z_scramble"] +
         0.15 * df["z_putt"] +
         0.05 * df["z_par3_good"] +
-        0.05 * df["z_par5_good"]
+        0.1 * df["z_par5_good"]+
+        0.1* df["z_offtee"]+       
+        0.3*  df["z_birdie_avg"]
     )
     return df
 
